@@ -26,6 +26,23 @@
 </head>
 <body class="bg-slate-100 font-sans min-h-screen flex flex-col md:flex-row text-slate-800">
 
+  <!-- ==================== BANNER NOTIFIKASI PEMBARUAN APLIKASI ==================== -->
+  <div id="updateAppBanner" class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-blue-600 text-white p-4 rounded-2xl shadow-2xl z-50 flex items-center justify-between gap-3 hidden">
+    <div class="flex items-center space-x-3">
+      <div class="bg-white/20 p-2.5 rounded-xl text-white shrink-0">
+        <i class="fa-solid fa-circle-exclamation text-lg"></i>
+      </div>
+      <div>
+        <h4 class="font-bold text-sm">Pembaruan Tersedia!</h4>
+        <p class="text-[11px] text-blue-100">Versi baru aplikasi telah siap digunakan.</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <button onclick="applyAppUpdate()" class="bg-white text-blue-600 px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-blue-50 transition shadow-sm">Muat Ulang</button>
+      <button onclick="dismissAppUpdate()" class="text-blue-200 hover:text-white p-1 text-sm"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+  </div>
+
   <!-- ==================== POP-UP INSTALL PWA BANNER ==================== -->
   <div id="pwaInstallBanner" class="fixed top-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-slate-900 text-white p-4 rounded-2xl shadow-2xl z-50 flex items-center justify-between gap-3 hidden">
     <div class="flex items-center space-x-3">
@@ -110,7 +127,7 @@
       </div>
       <div>
         <h1 id="brandTitle" class="font-bold text-lg leading-tight">BukuKasku</h1>
-        <p class="text-xs text-slate-400">Pembukuan Realtime</p>
+        <p class="text-xs text-slate-400">Versi <span id="displayAppVersion">1.0.0</span></p>
       </div>
     </div>
 
@@ -352,7 +369,7 @@
             </div>
           </div>
 
-          <!-- Ganti PIN Keamanan -->
+          <!-- Ganti PIN Keamanan & Info Versi -->
           <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit">
             <h3 class="font-bold text-slate-800 text-lg pb-3 border-b border-slate-100"><i class="fa-solid fa-key text-amber-600 mr-2"></i> Ganti PIN Keamanan</h3>
             <div class="space-y-3">
@@ -370,8 +387,12 @@
               <button onclick="updateSecurityPin()" class="w-full bg-amber-600 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-amber-700 transition">Update PIN Keamanan</button>
             </div>
 
-            <!-- Backup JSON -->
-            <div class="pt-4 border-t border-slate-100">
+            <!-- Informasi Versi Aplikasi & Backup -->
+            <div class="pt-4 border-t border-slate-100 space-y-3">
+              <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                <span class="text-slate-500 font-medium"><i class="fa-solid fa-code-branch mr-1.5 text-blue-600"></i> Versi Aplikasi Aktif</span>
+                <span id="settingAppVersionText" class="font-bold text-blue-600 font-mono">1.0.0</span>
+              </div>
               <button onclick="backupDataJSON()" class="w-full bg-emerald-600 text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-emerald-700 transition flex items-center justify-center gap-2">
                 <i class="fa-solid fa-download"></i> Download Backup (JSON)
               </button>
@@ -430,9 +451,14 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // ==========================================
+    // KONTROL VERSI APLIKASI (Ubah saat rilis update)
+    // ==========================================
+    const APP_VERSION = "1.0.8"; 
+
     window.globalTransactions = [];
     window.currentPin = "";
-    window.currentUserRole = null; // 'owner' atau 'kasir'
+    window.currentUserRole = null;
 
     // Default PIN Fallback
     window.activeOwnerPin = localStorage.getItem("ownerPin") || "123456";
@@ -442,15 +468,41 @@
 
     const now = new Date();
     document.getElementById("reportMonthFilter").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Tampilkan versi pada elemen HTML
+    document.getElementById("displayAppVersion").innerText = APP_VERSION;
+    document.getElementById("settingAppVersionText").innerText = APP_VERSION;
 
-    // 2. Register Service Worker untuk PWA
+    // 2. Register Service Worker untuk PWA & Cek Pembaruan Tanpa Bug
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('Service Worker PWA aktif:', reg.scope))
+          .then(registration => {
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  const lastDismissedVersion = localStorage.getItem("dismissed_update_version");
+                  if (lastDismissedVersion !== APP_VERSION) {
+                    document.getElementById("updateAppBanner").classList.remove("hidden");
+                  }
+                }
+              });
+            });
+          })
           .catch(err => console.error('Gagal register Service Worker:', err));
       });
     }
+
+    window.applyAppUpdate = () => {
+      localStorage.setItem("dismissed_update_version", APP_VERSION);
+      window.location.reload();
+    };
+
+    window.dismissAppUpdate = () => {
+      localStorage.setItem("dismissed_update_version", APP_VERSION);
+      document.getElementById("updateAppBanner").classList.add("hidden");
+    };
 
     // 3. Tangkap Event Pop-up Install PWA
     let deferredPrompt;
@@ -798,7 +850,6 @@
         const tr = document.createElement("tr");
         tr.className = "hover:bg-slate-50/80 transition";
         
-        // Tombol Edit & Hapus khusus Admin/Owner menggunakan Modal Modern
         const actionButtons = window.currentUserRole === 'owner' ? `
           <button onclick="editTx('${data.id}', '${data.type}', ${data.amount}, '${data.category}', '${data.account}', '${data.description}')" class="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition mr-1" title="Edit Transaksi"><i class="fa-solid fa-pen"></i></button>
           <button onclick="confirmDeleteTx('${data.id}')" class="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition" title="Hapus Transaksi"><i class="fa-solid fa-trash"></i></button>
