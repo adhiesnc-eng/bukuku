@@ -1100,9 +1100,9 @@
       });
     };
 
-    // FITUR EXPORT EXCEL (.xlsx) MULTI-SHEET PER BULAN DENGAN JARAK KOLOM RAPI
+    // FITUR EXPORT EXCEL (.xlsx) YANG TELAH DIPERBAIKI (ROBUST & SUPPORT BLOB DOWNLOAD)
     window.exportToExcel = () => {
-      if (window.globalTransactions.length === 0) {
+      if (!window.globalTransactions || window.globalTransactions.length === 0) {
         showModernModal({
           title: "Tidak Ada Data",
           message: "Belum ada data transaksi yang dapat diexport.",
@@ -1113,63 +1113,88 @@
         return;
       }
 
-      // Kelompokkan data transaksi berdasarkan Bulan (YYYY-MM)
-      const groupedByMonth = {};
-      window.globalTransactions.forEach(t => {
-        let monthKey = "Lainnya";
-        if (t.createdAt) {
-          const dateObj = new Date(t.createdAt.seconds * 1000);
-          const year = dateObj.getFullYear();
-          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-          monthKey = `${year}-${month}`;
-        }
-        if (!groupedByMonth[monthKey]) {
-          groupedByMonth[monthKey] = [];
-        }
-        
-        const dateStr = t.createdAt ? new Date(t.createdAt.seconds * 1000).toLocaleDateString('id-ID') : '';
-        groupedByMonth[monthKey].push({
-          "Tanggal": dateStr,
-          "Jenis Transaksi": t.type === 'in' ? 'Pemasukan' : 'Pengeluaran',
-          "Nominal (Rp)": t.amount,
-          "Kategori": t.category,
-          "Sumber Akun": t.account,
-          "Keterangan": t.description
+      try {
+        const groupedByMonth = {};
+        window.globalTransactions.forEach(t => {
+          let monthKey = "Lainnya";
+          let dateStr = "Baru saja";
+          
+          if (t.createdAt && t.createdAt.seconds) {
+            const dateObj = new Date(t.createdAt.seconds * 1000);
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            monthKey = `${year}-${month}`;
+            dateStr = dateObj.toLocaleDateString('id-ID');
+          } else {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            monthKey = `${year}-${month}`;
+            dateStr = now.toLocaleDateString('id-ID');
+          }
+
+          if (!groupedByMonth[monthKey]) {
+            groupedByMonth[monthKey] = [];
+          }
+
+          groupedByMonth[monthKey].push({
+            "Tanggal": dateStr,
+            "Jenis Transaksi": t.type === 'in' ? 'Pemasukan' : 'Pengeluaran',
+            "Nominal (Rp)": Number(t.amount) || 0,
+            "Kategori": t.category || "-",
+            "Sumber Akun": t.account || "-",
+            "Keterangan": t.description || "-"
+          });
         });
-      });
 
-      const wb = XLSX.utils.book_new();
-      const monthNames = {
-        "01": "Januari", "02": "Februari", "03": "Maret", "04": "April",
-        "05": "Mei", "06": "Juni", "07": "Juli", "08": "Agustus",
-        "09": "September", "10": "Oktober", "11": "November", "12": "Desember"
-      };
+        const wb = XLSX.utils.book_new();
+        const monthNames = {
+          "01": "Januari", "02": "Februari", "03": "Maret", "04": "April",
+          "05": "Mei", "06": "Juni", "07": "Juli", "08": "Agustus",
+          "09": "September", "10": "Oktober", "11": "November", "12": "Desember"
+        };
 
-      // Buat tab sheet terpisah untuk setiap bulan
-      for (const [monthKey, rows] of Object.entries(groupedByMonth)) {
-        let sheetName = monthKey;
-        if (monthKey !== "Lainnya") {
-          const [y, m] = monthKey.split('-');
-          sheetName = `${monthNames[m] || m} ${y}`;
+        for (const [monthKey, rows] of Object.entries(groupedByMonth)) {
+          let sheetName = monthKey;
+          if (monthKey !== "Lainnya" && monthKey.includes("-")) {
+            const [y, m] = monthKey.split('-');
+            sheetName = `${monthNames[m] || m} ${y}`;
+          }
+
+          const ws = XLSX.utils.json_to_sheet(rows);
+          ws['!cols'] = [
+            { wch: 14 },
+            { wch: 18 },
+            { wch: 18 },
+            { wch: 22 },
+            { wch: 18 },
+            { wch: 40 }
+          ];
+          XLSX.utils.book_append_sheet(wb, ws, sheetName);
         }
 
-        const ws = XLSX.utils.json_to_sheet(rows);
+        // Export menggunakan Blob agar kompatibel di semua jenis browser HP / PWA
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const dataBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Laporan_Keuangan_${new Date().toISOString().slice(0,10)}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
 
-        // Atur jarak lebar kolom secara rapi dan profesional
-        ws['!cols'] = [
-          { wch: 14 }, // Tanggal
-          { wch: 18 }, // Jenis Transaksi
-          { wch: 18 }, // Nominal
-          { wch: 22 }, // Kategori
-          { wch: 18 }, // Sumber Akun
-          { wch: 40 }  // Keterangan
-        ];
-
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      } catch (err) {
+        console.error("Gagal export excel:", err);
+        showModernModal({
+          title: "Gagal Export",
+          message: "Terjadi kesalahan saat memproses file Excel.",
+          type: "danger",
+          confirmText: "OK",
+          showCancel: false
+        });
       }
-
-      // Download file Excel
-      XLSX.writeFile(wb, "Laporan_Keuangan_Bulanan.xlsx");
     };
 
     window.backupDataJSON = () => {
