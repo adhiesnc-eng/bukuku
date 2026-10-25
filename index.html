@@ -1100,7 +1100,7 @@
       });
     };
 
-    // FITUR EXPORT EXCEL (.xlsx) YANG TELAH DIPERBAIKI (ROBUST & SUPPORT BLOB DOWNLOAD)
+    // FITUR EXPORT EXCEL DENGAN FALLBACK AMAN KE CSV JIKA OFFLINE / CDN GAGAL
     window.exportToExcel = () => {
       if (!window.globalTransactions || window.globalTransactions.length === 0) {
         showModernModal({
@@ -1111,6 +1111,35 @@
           showCancel: false
         });
         return;
+      }
+
+      // Jika library SheetJS (XLSX) gagal dimuat (misal offline/koneksi terputus), gunakan fallback CSV
+      if (typeof XLSX === 'undefined') {
+        try {
+          let csvContent = "data:text/csv;charset=utf-8,Tanggal,Jenis Transaksi,Nominal,Kategori,Akun,Keterangan\n";
+          window.globalTransactions.forEach(t => {
+            const dateStr = t.createdAt && t.createdAt.seconds ? new Date(t.createdAt.seconds * 1000).toLocaleDateString('id-ID') : 'Baru saja';
+            csvContent += `"${dateStr}","${t.type === 'in' ? 'Pemasukan' : 'Pengeluaran'}",${t.amount || 0},"${t.category || '-'}","${t.account || '-'}","${t.description || '-'}"\n`;
+          });
+          const encodedUri = encodeURI(csvContent);
+          const link = document.createElement("a");
+          link.setAttribute("href", encodedUri);
+          link.setAttribute("download", `Laporan_Keuangan_${new Date().toISOString().slice(0,10)}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          showModernModal({
+            title: "Export Berhasil (Mode CSV)",
+            message: "Library Excel online tidak terhubung (offline), file berhasil di-export dalam format CSV.",
+            type: "success",
+            confirmText: "OK",
+            showCancel: false
+          });
+          return;
+        } catch (csvErr) {
+          console.error(csvErr);
+        }
       }
 
       try {
@@ -1173,7 +1202,6 @@
           XLSX.utils.book_append_sheet(wb, ws, sheetName);
         }
 
-        // Export menggunakan Blob agar kompatibel di semua jenis browser HP / PWA
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const dataBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(dataBlob);
@@ -1189,7 +1217,7 @@
         console.error("Gagal export excel:", err);
         showModernModal({
           title: "Gagal Export",
-          message: "Terjadi kesalahan saat memproses file Excel.",
+          message: "Terjadi kesalahan saat memproses file: " + err.message,
           type: "danger",
           confirmText: "OK",
           showCancel: false
