@@ -70,7 +70,7 @@
         <h3 id="modalTitle" class="text-lg font-bold text-slate-800">Konfirmasi Aksi</h3>
         <p id="modalMessage" class="text-xs text-slate-500">Apakah Anda yakin ingin melanjutkan tindakan ini?</p>
       </div>
-      <div class="flex gap-2 pt-2">
+      <div class="flex gap-2 pt-2" id="modalButtonContainer">
         <button id="modalBtnCancel" onclick="closeModernModal()" class="flex-1 bg-slate-100 text-slate-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-slate-200 transition">Batal</button>
         <button id="modalBtnConfirm" class="flex-1 bg-rose-600 text-white font-semibold py-2.5 rounded-xl text-xs hover:bg-rose-700 transition shadow-lg shadow-rose-600/20">Ya, Lanjutkan</button>
       </div>
@@ -78,7 +78,7 @@
   </div>
 
   <!-- ==================== MODAL LOCKSCREEN PIN ==================== -->
-  <div id="pinModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+  <div id="pinModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
     <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-6">
       <div class="space-y-1">
         <div class="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2">
@@ -369,7 +369,7 @@
             </div>
           </div>
 
-          <!-- Ganti PIN Keamanan & Info Versi -->
+          <!-- Ganti PIN Keamanan, Info Versi & Hapus Cache -->
           <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit">
             <h3 class="font-bold text-slate-800 text-lg pb-3 border-b border-slate-100"><i class="fa-solid fa-key text-amber-600 mr-2"></i> Ganti PIN Keamanan</h3>
             <div class="space-y-3">
@@ -387,12 +387,15 @@
               <button onclick="updateSecurityPin()" class="w-full bg-amber-600 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-amber-700 transition">Update PIN Keamanan</button>
             </div>
 
-            <!-- Informasi Versi Aplikasi & Backup -->
+            <!-- Informasi Versi, Hapus Cache, & Backup -->
             <div class="pt-4 border-t border-slate-100 space-y-3">
               <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
-                <span class="text-slate-500 font-medium"><i class="fa-solid fa-code-branch mr-1.5 text-blue-600"></i> Versi Aplikasi Aktif</span>
+                <span class="text-slate-500 font-medium"><i class="fa-solid fa-code-branch mr-1.5 text-blue-600"></i> Versi Aplikasi</span>
                 <span id="settingAppVersionText" class="font-bold text-blue-600 font-mono">1.0.0</span>
               </div>
+              <button onclick="clearAppCacheAndReload()" class="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-sm">
+                <i class="fa-solid fa-rotate"></i> Hapus Cache & Update Terbaru
+              </button>
               <button onclick="backupDataJSON()" class="w-full bg-emerald-600 text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-emerald-700 transition flex items-center justify-center gap-2">
                 <i class="fa-solid fa-download"></i> Download Backup (JSON)
               </button>
@@ -451,10 +454,8 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // ==========================================
-    // KONTROL VERSI APLIKASI (Ubah saat rilis update)
-    // ==========================================
-    const APP_VERSION = "1.0.8"; 
+    // Versi Aplikasi Saat Ini
+    const APP_VERSION = "1.0.0"; 
 
     window.globalTransactions = [];
     window.currentPin = "";
@@ -469,11 +470,20 @@
     const now = new Date();
     document.getElementById("reportMonthFilter").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     
-    // Tampilkan versi pada elemen HTML
     document.getElementById("displayAppVersion").innerText = APP_VERSION;
     document.getElementById("settingAppVersionText").innerText = APP_VERSION;
 
-    // 2. Register Service Worker untuk PWA & Cek Pembaruan Tanpa Bug
+    // 2. Cek Sesi Login Aktif (Agar tidak perlu login terus saat reload)
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedRole = sessionStorage.getItem("activeUserRole");
+      if (savedRole) {
+        unlockApp(savedRole, true);
+      } else {
+        document.getElementById("pinModal").classList.remove("hidden");
+      }
+    });
+
+    // 3. Register Service Worker untuk PWA & Cek Pembaruan
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
@@ -504,7 +514,34 @@
       document.getElementById("updateAppBanner").classList.add("hidden");
     };
 
-    // 3. Tangkap Event Pop-up Install PWA
+    // Fungsi Tombol Hapus Cache & Paksa Update Versi Terbaru
+    window.clearAppCacheAndReload = () => {
+      showModernModal({
+        title: "Hapus Cache Aplikasi?",
+        message: "Tindakan ini akan membersihkan data cache lama dan memuat ulang halaman untuk mengambil pembaruan terbaru dari server.",
+        type: "info",
+        confirmText: "Ya, Hapus & Muat Ulang",
+        showCancel: true,
+        onConfirm: async () => {
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (let registration of registrations) {
+              await registration.unregister();
+            }
+          }
+          if ('caches' in window) {
+            const cacheNames = await caches.keys();
+            for (let name of cacheNames) {
+              await caches.delete(name);
+            }
+          }
+          localStorage.removeItem("dismissed_update_version");
+          window.location.reload(true);
+        }
+      });
+    };
+
+    // 4. Tangkap Event Pop-up Install PWA
     let deferredPrompt;
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
@@ -523,7 +560,7 @@
       }
     });
 
-    // 4. Load PIN dari Firestore Realtime
+    // 5. Load PIN dari Firestore Realtime
     onSnapshot(doc(db, "settings", "security"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -532,7 +569,7 @@
       }
     });
 
-    // 5. Handle Numpad Lockscreen PIN
+    // 6. Handle Numpad Lockscreen PIN
     window.pressPin = (num) => {
       if (window.currentPin.length < 6) {
         window.currentPin += num;
@@ -572,8 +609,12 @@
       }
     };
 
-    window.unlockApp = (role) => {
+    window.unlockApp = (role, restored = false) => {
       window.currentUserRole = role;
+      if (!restored) {
+        sessionStorage.setItem("activeUserRole", role);
+      }
+
       document.getElementById("pinModal").classList.add("hidden");
       document.getElementById("userRoleBadge").innerText = role === 'owner' ? 'Admin (Akses Penuh)' : 'Kasir / Staf';
       document.getElementById("userRoleBadge").className = role === 'owner' ? 'font-bold text-emerald-400' : 'font-bold text-amber-400';
@@ -597,35 +638,47 @@
 
     window.lockApp = () => {
       window.currentUserRole = null;
+      sessionStorage.removeItem("activeUserRole");
       document.getElementById("pinModal").classList.remove("hidden");
       clearPin();
     };
 
-    // 6. Modern Modal Pop-up Handler
-    window.showModernModal = ({ title, message, type = 'danger', confirmText = 'Ya, Hapus', onConfirm }) => {
+    // 7. Modern Modal Pop-up Handler
+    window.showModernModal = ({ title, message, type = 'danger', confirmText = 'Ya, Lanjutkan', showCancel = true, onConfirm }) => {
       const modal = document.getElementById('modernModal');
       const container = document.getElementById('modalContainer');
       const iconBox = document.getElementById('modalIconBox');
       const icon = document.getElementById('modalIcon');
       const titleEl = document.getElementById('modalTitle');
       const msgEl = document.getElementById('modalMessage');
-      const confirmBtn = document.getElementById('modalBtnConfirm');
+      const btnContainer = document.getElementById('modalButtonContainer');
 
       titleEl.innerText = title;
       msgEl.innerText = message;
-      confirmBtn.innerText = confirmText;
 
       if (type === 'danger') {
         iconBox.className = "w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2";
         icon.className = "fa-solid fa-trash-can";
-        confirmBtn.className = "flex-1 bg-rose-600 text-white font-semibold py-2.5 rounded-xl text-xs hover:bg-rose-700 transition shadow-lg shadow-rose-600/20";
+      } else if (type === 'success') {
+        iconBox.className = "w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2";
+        icon.className = "fa-solid fa-circle-check";
       } else {
         iconBox.className = "w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2";
-        icon.className = "fa-solid fa-pen-to-square";
-        confirmBtn.className = "flex-1 bg-blue-600 text-white font-semibold py-2.5 rounded-xl text-xs hover:bg-blue-700 transition shadow-lg shadow-blue-600/20";
+        icon.className = "fa-solid fa-circle-info";
       }
 
-      confirmBtn.onclick = () => {
+      if (showCancel) {
+        btnContainer.innerHTML = `
+          <button onclick="closeModernModal()" class="flex-1 bg-slate-100 text-slate-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-slate-200 transition">Batal</button>
+          <button id="modalBtnConfirm" class="flex-1 ${type === 'danger' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'} text-white font-semibold py-2.5 rounded-xl text-xs transition shadow-lg">${confirmText}</button>
+        `;
+      } else {
+        btnContainer.innerHTML = `
+          <button id="modalBtnConfirm" class="w-full ${type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'} text-white font-semibold py-2.5 rounded-xl text-xs transition shadow-lg">${confirmText}</button>
+        `;
+      }
+
+      document.getElementById('modalBtnConfirm').onclick = () => {
         closeModernModal();
         if (onConfirm) onConfirm();
       };
@@ -647,13 +700,19 @@
       }, 150);
     };
 
-    // 7. Update PIN Keamanan
+    // 8. Update PIN Keamanan
     window.updateSecurityPin = async () => {
       const role = document.getElementById("pinTargetRole").value;
       const newPin = document.getElementById("newPinInput").value;
 
       if (newPin.length !== 6 || isNaN(newPin)) {
-        alert("PIN harus berupa 6 digit angka!");
+        showModernModal({
+          title: "Format PIN Salah",
+          message: "PIN harus berupa tepat 6 digit angka.",
+          type: "danger",
+          confirmText: "OK",
+          showCancel: false
+        });
         return;
       }
 
@@ -671,14 +730,27 @@
 
         await setDoc(doc(db, "settings", "security"), pinData, { merge: true });
         document.getElementById("newPinInput").value = "";
-        alert(`Berhasil memperbarui PIN ${role.toUpperCase()} menjadi: ${newPin}`);
+        
+        showModernModal({
+          title: "PIN Berhasil Diperbarui",
+          message: `PIN ${role.toUpperCase()} baru berhasil disimpan ke server.`,
+          type: "success",
+          confirmText: "OK",
+          showCancel: false
+        });
       } catch (err) {
         console.error(err);
-        alert("Gagal mengupdate PIN di server.");
+        showModernModal({
+          title: "Gagal Menyimpan",
+          message: "Gagal memperbarui PIN di server.",
+          type: "danger",
+          confirmText: "OK",
+          showCancel: false
+        });
       }
     };
 
-    // 8. Muat Pengaturan Lokal
+    // 9. Muat Pengaturan Lokal
     window.loadAppSettings = () => {
       const appName = localStorage.getItem("appName") || "BukuKasku";
       const accounts = localStorage.getItem("accounts") || "Kas Tunai, Bank BCA, Bank BRI, E-Wallet";
@@ -697,7 +769,7 @@
       categorySelect.innerHTML = categories.split(',').map(cat => `<option value="${cat.trim()}">${cat.trim()}</option>`).join('');
     };
 
-    // 9. Navigasi Antar Halaman
+    // 10. Navigasi Antar Halaman
     window.switchPage = (pageId) => {
       document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
       document.getElementById(`page-${pageId}`).classList.add('active');
@@ -714,7 +786,7 @@
       });
     };
 
-    // 10. Simpan / Edit Transaksi
+    // 11. Simpan / Edit Transaksi dengan Popup Modern
     document.getElementById("formTransaksi").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = document.getElementById("btnSubmit");
@@ -732,16 +804,35 @@
       try {
         if (editId) {
           await updateDoc(doc(db, "transactions", editId), txData);
-          alert("Transaksi berhasil diperbarui!");
+          showModernModal({
+            title: "Berhasil Diperbarui",
+            message: "Data transaksi berhasil diperbarui ke sistem.",
+            type: "success",
+            confirmText: "OK",
+            showCancel: false
+          });
           cancelEditMode();
         } else {
           txData.createdAt = serverTimestamp();
           await addDoc(collection(db, "transactions"), txData);
-          alert("Transaksi berhasil disimpan!");
+          showModernModal({
+            title: "Berhasil Disimpan",
+            message: "Transaksi baru berhasil ditambahkan ke database.",
+            type: "success",
+            confirmText: "OK",
+            showCancel: false
+          });
         }
         document.getElementById("formTransaksi").reset();
       } catch (err) {
-        console.error(err); alert("Gagal menyimpan transaksi.");
+        console.error(err);
+        showModernModal({
+          title: "Gagal Menyimpan",
+          message: "Terjadi kesalahan saat menyimpan transaksi.",
+          type: "danger",
+          confirmText: "OK",
+          showCancel: false
+        });
       } finally {
         btn.disabled = false; btn.innerText = "Simpan Transaksi";
       }
@@ -770,7 +861,7 @@
       document.getElementById("btnCancelEdit").classList.add("hidden");
     };
 
-    // 11. Realtime Listener Transactions
+    // 12. Realtime Listener Transactions
     const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
       window.globalTransactions = [];
@@ -929,12 +1020,19 @@
         message: "Data transaksi yang dihapus tidak dapat dikembalikan. Saldo akan otomatis disesuaikan secara real-time.",
         type: "danger",
         confirmText: "Ya, Hapus",
+        showCancel: true,
         onConfirm: async () => {
           try {
             await deleteDoc(doc(db, "transactions", id));
           } catch (err) {
             console.error(err);
-            alert("Gagal menghapus transaksi.");
+            showModernModal({
+              title: "Gagal Menghapus",
+              message: "Terjadi kesalahan saat menghapus transaksi.",
+              type: "danger",
+              confirmText: "OK",
+              showCancel: false
+            });
           }
         }
       });
@@ -975,7 +1073,13 @@
       localStorage.setItem("categories", categories);
 
       loadAppSettings();
-      alert("Pengaturan berhasil disimpan!");
+      showModernModal({
+        title: "Pengaturan Disimpan",
+        message: "Pengaturan umum berhasil diperbarui.",
+        type: "success",
+        confirmText: "OK",
+        showCancel: false
+      });
     };
 
     // Init
