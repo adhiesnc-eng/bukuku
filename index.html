@@ -43,6 +43,23 @@
     </div>
   </div>
 
+  <!-- ==================== MODAL KONFIRMASI / POP-UP MODERN ==================== -->
+  <div id="modernModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-4 transform transition-all scale-95 opacity-0" id="modalContainer">
+      <div id="modalIconBox" class="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2">
+        <i id="modalIcon" class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div class="space-y-1">
+        <h3 id="modalTitle" class="text-lg font-bold text-slate-800">Konfirmasi Aksi</h3>
+        <p id="modalMessage" class="text-xs text-slate-500">Apakah Anda yakin ingin melanjutkan tindakan ini?</p>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button id="modalBtnCancel" onclick="closeModernModal()" class="flex-1 bg-slate-100 text-slate-700 font-semibold py-2.5 rounded-xl text-xs hover:bg-slate-200 transition">Batal</button>
+        <button id="modalBtnConfirm" class="flex-1 bg-rose-600 text-white font-semibold py-2.5 rounded-xl text-xs hover:bg-rose-700 transition shadow-lg shadow-rose-600/20">Ya, Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== MODAL LOCKSCREEN PIN ==================== -->
   <div id="pinModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl text-center space-y-6">
@@ -81,7 +98,7 @@
         <button onclick="backspacePin()" class="h-14 rounded-2xl bg-slate-200 text-slate-600 font-bold active:bg-slate-300 transition"><i class="fa-solid fa-backspace"></i></button>
       </div>
       
-      <p class="text-[10px] text-slate-400">Default PIN: Owner <b>123456</b> | Kasir <b>111111</b></p>
+      <p class="text-[10px] text-slate-400">PIN Admin: <b>123456</b> | PIN Kasir: <b>111111</b></p>
     </div>
   </div>
 
@@ -256,7 +273,7 @@
                   <th class="p-3">Kategori</th>
                   <th class="p-3">Akun</th>
                   <th class="p-3">Nominal</th>
-                  <th class="p-3 text-center action-col">Aksi</th>
+                  <th class="p-3 text-center action-col">Aksi (Admin)</th>
                 </tr>
               </thead>
               <tbody id="fullTxTable" class="text-sm divide-y divide-slate-100">
@@ -342,7 +359,7 @@
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1">Target PIN yang Diubah</label>
                 <select id="pinTargetRole" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
-                  <option value="owner">PIN Owner (Akses Penuh)</option>
+                  <option value="owner">PIN Admin / Owner (Akses Penuh)</option>
                   <option value="kasir">PIN Kasir / Staf (Akses Input)</option>
                 </select>
               </div>
@@ -506,7 +523,7 @@
     window.unlockApp = (role) => {
       window.currentUserRole = role;
       document.getElementById("pinModal").classList.add("hidden");
-      document.getElementById("userRoleBadge").innerText = role === 'owner' ? 'Owner (Akses Penuh)' : 'Kasir / Staf';
+      document.getElementById("userRoleBadge").innerText = role === 'owner' ? 'Admin (Akses Penuh)' : 'Kasir / Staf';
       document.getElementById("userRoleBadge").className = role === 'owner' ? 'font-bold text-emerald-400' : 'font-bold text-amber-400';
 
       if (role === 'kasir') {
@@ -523,6 +540,7 @@
 
       clearPin();
       switchPage('dashboard');
+      renderDashboardAndTables();
     };
 
     window.lockApp = () => {
@@ -531,7 +549,53 @@
       clearPin();
     };
 
-    // 6. Update PIN Keamanan
+    // 6. Modern Modal Pop-up Handler
+    window.showModernModal = ({ title, message, type = 'danger', confirmText = 'Ya, Hapus', onConfirm }) => {
+      const modal = document.getElementById('modernModal');
+      const container = document.getElementById('modalContainer');
+      const iconBox = document.getElementById('modalIconBox');
+      const icon = document.getElementById('modalIcon');
+      const titleEl = document.getElementById('modalTitle');
+      const msgEl = document.getElementById('modalMessage');
+      const confirmBtn = document.getElementById('modalBtnConfirm');
+
+      titleEl.innerText = title;
+      msgEl.innerText = message;
+      confirmBtn.innerText = confirmText;
+
+      if (type === 'danger') {
+        iconBox.className = "w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2";
+        icon.className = "fa-solid fa-trash-can";
+        confirmBtn.className = "flex-1 bg-rose-600 text-white font-semibold py-2.5 rounded-xl text-xs hover:bg-rose-700 transition shadow-lg shadow-rose-600/20";
+      } else {
+        iconBox.className = "w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto text-2xl font-bold mb-2";
+        icon.className = "fa-solid fa-pen-to-square";
+        confirmBtn.className = "flex-1 bg-blue-600 text-white font-semibold py-2.5 rounded-xl text-xs hover:bg-blue-700 transition shadow-lg shadow-blue-600/20";
+      }
+
+      confirmBtn.onclick = () => {
+        closeModernModal();
+        if (onConfirm) onConfirm();
+      };
+
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        container.classList.remove('scale-95', 'opacity-0');
+        container.classList.add('scale-100', 'opacity-100');
+      }, 10);
+    };
+
+    window.closeModernModal = () => {
+      const modal = document.getElementById('modernModal');
+      const container = document.getElementById('modalContainer');
+      container.classList.remove('scale-100', 'opacity-100');
+      container.classList.add('scale-95', 'opacity-0');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+      }, 150);
+    };
+
+    // 7. Update PIN Keamanan
     window.updateSecurityPin = async () => {
       const role = document.getElementById("pinTargetRole").value;
       const newPin = document.getElementById("newPinInput").value;
@@ -562,7 +626,7 @@
       }
     };
 
-    // 7. Muat Pengaturan Lokal
+    // 8. Muat Pengaturan Lokal
     window.loadAppSettings = () => {
       const appName = localStorage.getItem("appName") || "BukuKasku";
       const accounts = localStorage.getItem("accounts") || "Kas Tunai, Bank BCA, Bank BRI, E-Wallet";
@@ -581,7 +645,7 @@
       categorySelect.innerHTML = categories.split(',').map(cat => `<option value="${cat.trim()}">${cat.trim()}</option>`).join('');
     };
 
-    // 8. Navigasi Antar Halaman
+    // 9. Navigasi Antar Halaman
     window.switchPage = (pageId) => {
       document.querySelectorAll('.page-section').forEach(el => el.classList.remove('active'));
       document.getElementById(`page-${pageId}`).classList.add('active');
@@ -598,7 +662,7 @@
       });
     };
 
-    // 9. Simpan / Edit Transaksi
+    // 10. Simpan / Edit Transaksi
     document.getElementById("formTransaksi").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = document.getElementById("btnSubmit");
@@ -616,12 +680,12 @@
       try {
         if (editId) {
           await updateDoc(doc(db, "transactions", editId), txData);
-          alert("Transaksi diperbarui!");
+          alert("Transaksi berhasil diperbarui!");
           cancelEditMode();
         } else {
           txData.createdAt = serverTimestamp();
           await addDoc(collection(db, "transactions"), txData);
-          alert("Transaksi tersimpan!");
+          alert("Transaksi berhasil disimpan!");
         }
         document.getElementById("formTransaksi").reset();
       } catch (err) {
@@ -643,6 +707,7 @@
       document.getElementById("btnSubmit").innerText = "Update Transaksi";
       document.getElementById("btnCancelEdit").classList.remove("hidden");
       switchPage('dashboard');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     window.cancelEditMode = () => {
@@ -653,7 +718,7 @@
       document.getElementById("btnCancelEdit").classList.add("hidden");
     };
 
-    // 10. Realtime Listener Transactions
+    // 11. Realtime Listener Transactions
     const q = query(collection(db, "transactions"), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
       window.globalTransactions = [];
@@ -733,10 +798,11 @@
         const tr = document.createElement("tr");
         tr.className = "hover:bg-slate-50/80 transition";
         
+        // Tombol Edit & Hapus khusus Admin/Owner menggunakan Modal Modern
         const actionButtons = window.currentUserRole === 'owner' ? `
-          <button onclick="editTx('${data.id}', '${data.type}', ${data.amount}, '${data.category}', '${data.account}', '${data.description}')" class="text-slate-400 hover:text-blue-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
-          <button onclick="deleteTx('${data.id}')" class="text-slate-400 hover:text-rose-500 transition" title="Hapus"><i class="fa-solid fa-trash"></i></button>
-        ` : `<span class="text-xs text-slate-300">-</span>`;
+          <button onclick="editTx('${data.id}', '${data.type}', ${data.amount}, '${data.category}', '${data.account}', '${data.description}')" class="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition mr-1" title="Edit Transaksi"><i class="fa-solid fa-pen"></i></button>
+          <button onclick="confirmDeleteTx('${data.id}')" class="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition" title="Hapus Transaksi"><i class="fa-solid fa-trash"></i></button>
+        ` : `<span class="text-xs text-slate-400 italic">Akses Admin</span>`;
 
         tr.innerHTML = `
           <td class="p-3 text-xs text-slate-500">${dateStr}</td>
@@ -744,7 +810,7 @@
           <td class="p-3"><span class="bg-slate-100 px-2.5 py-1 rounded-full text-xs text-slate-600">${data.category}</span></td>
           <td class="p-3 text-slate-600">${data.account}</td>
           <td class="p-3 font-bold ${data.type === 'in' ? 'text-emerald-600' : 'text-rose-600'}">${data.type === 'in' ? '+' : '-'} ${formatRupiah(data.amount)}</td>
-          <td class="p-3 text-center space-x-2 action-col">${actionButtons}</td>
+          <td class="p-3 text-center action-col">${actionButtons}</td>
         `;
         fullTableEl.appendChild(tr);
       });
@@ -806,10 +872,21 @@
     document.getElementById("filterEnd").addEventListener("change", applyFiltersAndRenderTables);
     document.getElementById("reportMonthFilter").addEventListener("change", renderReport);
 
-    window.deleteTx = async (id) => {
-      if (confirm("Hapus transaksi ini?")) {
-        await deleteDoc(doc(db, "transactions", id));
-      }
+    window.confirmDeleteTx = (id) => {
+      showModernModal({
+        title: "Hapus Transaksi?",
+        message: "Data transaksi yang dihapus tidak dapat dikembalikan. Saldo akan otomatis disesuaikan secara real-time.",
+        type: "danger",
+        confirmText: "Ya, Hapus",
+        onConfirm: async () => {
+          try {
+            await deleteDoc(doc(db, "transactions", id));
+          } catch (err) {
+            console.error(err);
+            alert("Gagal menghapus transaksi.");
+          }
+        }
+      });
     };
 
     window.exportToCSV = () => {
